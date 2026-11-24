@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>패턴 글자 메이커</title>
+<link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Do+Hyeon&family=Noto+Sans+KR:wght@900&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#f4f5f7;--panel:#fff;--tx:#1c2430;--bd:#d5d9e0;--ac:#1f6feb}
+@media(prefers-color-scheme:dark){:root{--bg:#10141a;--panel:#192029;--tx:#e6ebf2;--bd:#2c3744;--ac:#4f9dff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:14px/1.4 "Noto Sans KR",system-ui,sans-serif;display:flex;flex-wrap:wrap;gap:12px;padding:12px}
+.panel{background:var(--panel);border:1px solid var(--bd);border-radius:10px;padding:12px;width:300px;max-width:100%}
+.main{flex:1;min-width:300px}
+h1{font-size:16px;margin:0 0 8px}
+label{display:block;margin:8px 0 2px;font-size:12px;opacity:.8}
+select,input[type=text],textarea,button{width:100%;font:inherit;color:var(--tx);background:var(--bg);border:1px solid var(--bd);border-radius:6px;padding:6px}
+textarea{resize:vertical;height:60px}
+button{cursor:pointer;width:auto}button.pri{background:var(--ac);color:#fff;border-color:var(--ac)}
+input[type=range]{width:100%}input[type=color]{width:48px;height:28px;padding:0;border:0;background:none}
+.row{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.tabs button.on{background:var(--ac);color:#fff;border-color:var(--ac)}
+canvas{width:100%;height:auto;display:block;border:1px solid var(--bd);border-radius:8px;touch-action:none}
+.hint{font-size:12px;opacity:.7;margin:6px 0 0}
+</style>
+</head>
+<body>
+<div class="panel">
+  <h1>패턴 글자 메이커</h1>
+  <div class="row tabs"><button id="tT" class="on">타이핑</button><button id="tH">손글씨</button></div>
+
+  <div id="boxT">
+    <label>글자 (줄바꿈 가능)</label>
+    <textarea id="txt">아테네학당</textarea>
+    <label>폰트</label>
+    <select id="font"><option>Black Han Sans</option><option>Do Hyeon</option><option value="'Noto Sans KR'">Noto Sans KR Black</option></select>
+    <label>글자 크기 <span id="vSize"></span></label><input type="range" id="size" min="40" max="420" value="200">
+    <label>굵기 보강 <span id="vBold"></span></label><input type="range" id="bold" min="0" max="30" value="8">
+    <div class="row" style="margin-top:8px"><button id="rst">글자 위치 초기화</button></div>
+    <p class="hint">미리보기 화면에서 글자를 마우스로 끌어 위치를 옮길 수 있어요.</p>
+  </div>
+  <div id="boxH" style="display:none">
+    <label>펜 굵기 <span id="vPen"></span></label><input type="range" id="pen" min="8" max="120" value="50">
+    <div class="row" style="margin-top:8px"><button id="undo">되돌리기</button><button id="clr">손글씨 지우기</button></div>
+    <p class="hint">미리보기 화면 위에 직접 쓰세요. 굵은 획 안이 패턴으로 채워집니다. (모눈은 저장 시 제외)</p>
+  </div>
+
+  <label>패턴</label>
+  <select id="pat">
+    <option value="truss">트러스 (수직재+사재)</option>
+    <option value="warren">워렌 트러스 (삼각)</option>
+    <option value="x">X 가새</option>
+    <option value="hatch">사선 해칭</option>
+    <option value="grid">격자</option>
+    <option value="hex">벌집</option>
+    <option value="dots">점</option>
+  </select>
+  <label>패턴 간격 <span id="vCell"></span></label><input type="range" id="cell" min="10" max="80" value="28">
+  <label>선 굵기 <span id="vLw"></span></label><input type="range" id="lw" min="1" max="8" step=".5" value="2.5">
+  <label>면 채움 투명도 <span id="vFa"></span></label><input type="range" id="fa" min="0" max="100" value="12">
+  <div class="row" style="margin-top:8px"><span>패턴 색</span><input type="color" id="col" value="#4fd1ff"></div>
+  <div class="row" style="margin-top:8px"><label style="margin:0;display:flex;gap:6px;align-items:center;font-size:14px;opacity:1"><input type="checkbox" id="ol" checked>외곽선</label></div>
+  <label>외곽선 굵기 <span id="vOl"></span></label><input type="range" id="olw" min="1" max="16" value="4">
+
+  <label>배경</label>
+  <select id="bg"><option value="cad">CAD (어두운 배경)</option><option value="white">흰색</option></select>
+  <div class="row" style="margin-top:6px"><input type="file" id="file" accept="image/*" style="max-width:100%"><button id="rmImg">이미지 제거</button></div>
+  <p class="hint">이미지를 올리면 그 위에 덧대어 표시됩니다.</p>
+  <div class="row" style="margin-top:10px"><button class="pri" id="dl">PNG 저장</button></div>
+</div>
+<div class="main"><canvas id="cv" width="1200" height="700"></canvas></div>
+
+<script>
+const W=1200,H=700,$=id=>document.getElementById(id);
+const cv=$('cv'),ctx=cv.getContext('2d');
+const mk=()=>{const c=document.createElement('canvas');c.width=W;c.height=H;return c};
+const hw=mk(),mask=mk(),lay=mk(),pt=mk();
+let mode='T',img=null,drawing=false,last=null,hist=[],tx=0,ty=0,dragT=false;
+
+const ids=['size','bold','pen','cell','lw','fa'];
+function labels(){$('vSize').textContent=$('size').value;$('vBold').textContent=$('bold').value;$('vPen').textContent=$('pen').value;
+ $('vCell').textContent=$('cell').value;$('vLw').textContent=$('lw').value;$('vFa').textContent=$('fa').value+'%';$('vOl').textContent=$('olw').value}
+
+function drawPattern(c,type,s,color,lw){
+ c.clearRect(0,0,W,H);c.strokeStyle=color;c.fillStyle=color;c.lineWidth=lw;c.lineCap='round';c.beginPath();
+ const L=(a,b,x,y)=>{c.moveTo(a,b);c.lineTo(x,y)};
+ if(type==='truss'||type==='x'||type==='grid'){
+  for(let y=0;y<=H+s;y+=s)L(0,y,W,y);
+  for(let x=0;x<=W+s;x+=s)L(x,0,x,H);
+  if(type!=='grid')for(let j=0;j*s<=H;j++)for(let i=0;i*s<=W;i++){const x=i*s,y=j*s;
+   if(type==='x'){L(x,y,x+s,y+s);L(x+s,y,x,y+s)}else if((i+j)%2)L(x,y,x+s,y+s);else L(x+s,y,x,y+s)}
+ }else if(type==='warren'){
+  for(let j=0;j*s<=H;j++){const y=j*s,o=(j%2)*s/2;L(0,y,W,y);
+   for(let x=-s;x<=W+s;x+=s){L(x+o,y,x+o+s/2,y+s);L(x+o+s/2,y+s,x+o+s,y)}}
+ }else if(type==='hatch'){
+  for(let k=-H;k<=W;k+=s*.7)L(k,H,k+H,0);
+ }else if(type==='hex'){
+  const r=s*.62,h=r*Math.sqrt(3);
+  for(let j=-1;j*h<=H+h;j++)for(let i=-1;i*r*3<=W+r*3;i++){const cx=i*r*3+(j%2?r*1.5:0),cy=j*h/1;
+   for(let k=0;k<6;k++){const a=Math.PI/3*k,b=a+Math.PI/3;L(cx+r*Math.cos(a),cy+r*Math.sin(a),cx+r*Math.cos(b),cy+r*Math.sin(b))}}
+ }else if(type==='dots'){
+  c.stroke();c.beginPath();
+  for(let y=s/2;y<H;y+=s)for(let x=s/2;x<W;x+=s){c.moveTo(x,y);c.arc(x,y,lw*1.6,0,7)}
+  c.fill();return}
+ c.stroke();
+}
+
+function render(exp){
+ // background
+ if(img){const r=Math.max(W/img.width,H/img.height),w=img.width*r,h=img.height*r;ctx.drawImage(img,(W-w)/2,(H-h)/2,w,h)}
+ else if($('bg').value==='white'){ctx.fillStyle='#fff';ctx.fillRect(0,0,W,H)}
+ else{ctx.fillStyle='#0b1a2b';ctx.fillRect(0,0,W,H);grid('rgba(80,150,220,.18)',20);grid('rgba(80,150,220,.32)',100)}
+ if(mode==='H'&&!exp){ctx.fillStyle='rgba(255,255,255,.45)';ctx.fillRect(0,0,W,H);grid('rgba(30,90,170,.35)',20);grid('rgba(30,90,170,.6)',100)}
+ // mask
+ const m=mask.getContext('2d');m.clearRect(0,0,W,H);m.fillStyle='#000';m.strokeStyle='#000';m.lineJoin='round';
+ const t=$('txt').value;
+ if(mode==='T'&&t.trim()){
+  const sz=+$('size').value,lines=t.split('\n');let f=$('font').value;if(!f.includes("'"))f='"'+f+'"';
+  m.font=`900 ${sz}px ${f},sans-serif`;m.textAlign='center';m.textBaseline='middle';m.lineWidth=+$('bold').value;
+  const lh=sz*1.12,y0=H/2-lh*(lines.length-1)/2+ty,x0=W/2+tx;
+  lines.forEach((ln,i)=>{m.fillText(ln,x0,y0+i*lh);if(m.lineWidth)m.strokeText(ln,x0,y0+i*lh)});
+ }
+ if(mode==='H'||hist.length||true)m.drawImage(hw,0,0);
+ const col=$('col').value;
+ // tint fill
+ const l=lay.getContext('2d');l.globalCompositeOperation='source-over';l.clearRect(0,0,W,H);l.drawImage(mask,0,0);
+ l.globalCompositeOperation='source-in';l.fillStyle=col;l.fillRect(0,0,W,H);
+ ctx.globalAlpha=$('fa').value/100;ctx.drawImage(lay,0,0);ctx.globalAlpha=1;
+ // pattern
+ const p=pt.getContext('2d');p.globalCompositeOperation='source-over';
+ drawPattern(p,$('pat').value,+$('cell').value,col,+$('lw').value);
+ p.globalCompositeOperation='destination-in';p.drawImage(mask,0,0);
+ ctx.drawImage(pt,0,0);
+ // outline: ring just outside the glyph edge
+ if($('ol').checked){
+  const w=+$('olw').value;l.globalCompositeOperation='source-over';l.clearRect(0,0,W,H);
+  for(const r of [w/2,w])for(let k=0;k<20;k++){const a=Math.PI*2*k/20;l.drawImage(mask,Math.cos(a)*r,Math.sin(a)*r)}
+  l.globalCompositeOperation='source-in';l.fillStyle=col;l.fillRect(0,0,W,H);
+  l.globalCompositeOperation='destination-out';l.drawImage(mask,0,0);
+  ctx.drawImage(lay,0,0);
+ }
+}
+function grid(c,s){ctx.strokeStyle=c;ctx.lineWidth=1;ctx.beginPath();
+ for(let x=0;x<=W;x+=s){ctx.moveTo(x+.5,0);ctx.lineTo(x+.5,H)}for(let y=0;y<=H;y+=s){ctx.moveTo(0,y+.5);ctx.lineTo(W,y+.5)}ctx.stroke()}
+
+// handwriting
+const pos=e=>{const r=cv.getBoundingClientRect();return[(e.clientX-r.left)*W/r.width,(e.clientY-r.top)*H/r.height]};
+cv.addEventListener('pointerdown',e=>{
+ if(mode==='T'){cv.setPointerCapture(e.pointerId);dragT=true;last=pos(e);return}
+ cv.setPointerCapture(e.pointerId);
+ const c=mk();c.getContext('2d').drawImage(hw,0,0);hist.push(c);if(hist.length>25)hist.shift();
+ drawing=true;last=pos(e);stroke(last,last)});
+cv.addEventListener('pointermove',e=>{
+ if(dragT){const p=pos(e);tx+=p[0]-last[0];ty+=p[1]-last[1];last=p;render();return}
+ if(!drawing)return;const p=pos(e);stroke(last,p);last=p});
+['pointerup','pointercancel'].forEach(n=>cv.addEventListener(n,()=>{drawing=false;dragT=false}));
+function stroke(a,b){const h=hw.getContext('2d');h.strokeStyle='#000';h.lineWidth=+$('pen').value;h.lineCap=h.lineJoin='round';
+ h.beginPath();h.moveTo(a[0],a[1]);h.lineTo(b[0],b[1]);h.stroke();render()}
+$('undo').onclick=()=>{const c=hist.pop();if(!c)return;const h=hw.getContext('2d');h.clearRect(0,0,W,H);h.drawImage(c,0,0);render()};
+$('clr').onclick=()=>{hw.getContext('2d').clearRect(0,0,W,H);hist=[];render()};
+
+// UI
+function setMode(m){mode=m;$('tT').classList.toggle('on',m==='T');$('tH').classList.toggle('on',m==='H');
+ $('boxT').style.display=m==='T'?'':'none';$('boxH').style.display=m==='H'?'':'none';cv.style.cursor=m==='H'?'crosshair':'move';render()}
+$('rst').onclick=()=>{tx=ty=0;render()};cv.style.cursor='move';
+$('tT').onclick=()=>setMode('T');$('tH').onclick=()=>setMode('H');
+document.querySelectorAll('input,select,textarea').forEach(el=>{if(el.type!=='file')el.addEventListener('input',()=>{labels();render()})});
+$('bg').onchange=()=>{$('col').value=$('bg').value==='white'?'#1a1a1a':'#4fd1ff';render()};
+$('file').onchange=e=>{const f=e.target.files[0];if(!f)return;const i=new Image();i.onload=()=>{img=i;render()};i.src=URL.createObjectURL(f)};
+$('rmImg').onclick=()=>{img=null;$('file').value='';render()};
+$('dl').onclick=()=>{render(true);cv.toBlob(b=>{const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='pattern-text.png';a.click();render()})};
+labels();render();
+document.fonts.load('900 100px "Black Han Sans"').then(()=>document.fonts.load('100px "Do Hyeon"')).then(()=>document.fonts.load('900 100px "Noto Sans KR"')).then(render);
+</script>
+</body>
+</html>
